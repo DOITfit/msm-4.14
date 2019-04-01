@@ -34,16 +34,36 @@ struct boost_drv {
 	unsigned long state;
 };
 
-static void input_unboost_worker(struct work_struct *work);
-static void max_unboost_worker(struct work_struct *work);
+static struct boost_drv *boost_drv_g __read_mostly;
 
-static struct boost_drv boost_drv_g __read_mostly = {
-	.input_unboost = __DELAYED_WORK_INITIALIZER(boost_drv_g.input_unboost,
-						    input_unboost_worker, 0),
-	.max_unboost = __DELAYED_WORK_INITIALIZER(boost_drv_g.max_unboost,
-						  max_unboost_worker, 0),
-	.boost_waitq = __WAIT_QUEUE_HEAD_INITIALIZER(boost_drv_g.boost_waitq)
-};
+static u32 get_input_boost_freq(struct cpufreq_policy *policy)
+{
+	u32 freq;
+
+	if (cpumask_test_cpu(policy->cpu, cpu_lp_mask))
+		freq = CONFIG_INPUT_BOOST_FREQ_LP;
+	else
+		freq = CONFIG_INPUT_BOOST_FREQ_PERF;
+
+	return min(freq, policy->max);
+}
+
+static u32 get_max_boost_freq(struct cpufreq_policy *policy)
+{
+	u32 freq;
+
+	if (cpumask_test_cpu(policy->cpu, cpu_lp_mask))
+		freq = CONFIG_MAX_BOOST_FREQ_LP;
+	else
+		freq = CONFIG_MAX_BOOST_FREQ_PERF;
+
+	return min(freq, policy->max);
+}
+
+static u32 get_boost_state(struct boost_drv *b)
+{
+	return atomic_read(&b->state);
+}
 
 static unsigned int get_input_boost_freq(struct cpufreq_policy *policy)
 {
@@ -183,6 +203,7 @@ static int cpu_notifier_cb(struct notifier_block *nb, unsigned long action,
 {
 	struct boost_drv *b = container_of(nb, typeof(*b), cpu_notif);
 	struct cpufreq_policy *policy = data;
+	u32 state;
 
 	if (action != CPUFREQ_ADJUST)
 		return NOTIFY_OK;
@@ -194,7 +215,7 @@ static int cpu_notifier_cb(struct notifier_block *nb, unsigned long action,
 	}
 
 	/* Boost CPU to max frequency for max boost */
-	if (test_bit(MAX_BOOST, &b->state)) {
+	if (state & MAX_BOOST) {
 		policy->min = get_max_boost_freq(policy);
 		return NOTIFY_OK;
 	}
@@ -203,7 +224,7 @@ static int cpu_notifier_cb(struct notifier_block *nb, unsigned long action,
 	 * Boost to policy->max if the boost frequency is higher. When
 	 * unboosting, set policy->min to the absolute min freq for the CPU.
 	 */
-	if (test_bit(INPUT_BOOST, &b->state))
+	if (state & INPUT_BOOST)
 		policy->min = get_input_boost_freq(policy);
 	else if (cpumask_test_cpu(policy->cpu, cpu_lp_mask))
 		policy->min = CONFIG_MIN_FREQ_LP;
