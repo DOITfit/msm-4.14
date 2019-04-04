@@ -59,6 +59,11 @@ module_param(cpu_freq_idle_little, uint, 0644);
 module_param(input_boost_duration, short, 0644);
 module_param(wake_boost_duration, short, 0644);
 
+#ifdef CONFIG_DYNAMIC_STUNE_BOOST
+static __read_mostly int stune_boost = CONFIG_TA_STUNE_BOOST;
+module_param_named(dynamic_stune_boost, stune_boost, int, 0644);
+#endif
+
 /* Available bits for boost state */
 #define SCREEN_OFF		BIT(0)
 #define INPUT_BOOST		BIT(1)
@@ -70,8 +75,11 @@ struct boost_drv {
 	struct notifier_block cpu_notif;
 	struct notifier_block msm_drm_notif;
 	wait_queue_head_t boost_waitq;
-	atomic_long_t max_boost_expires;
-	unsigned long state;
+	atomic64_t max_boost_expires;
+	atomic_t state;
+
+	bool stune_active;
+	int stune_slot;
 };
 
 static struct boost_drv *boost_drv_g __read_mostly;
@@ -167,6 +175,23 @@ static void update_online_cpu_policy(void)
 	cpu = cpumask_first_and(cpu_perf_mask, cpu_online_mask);
 	cpufreq_update_policy(cpu);
 	put_online_cpus();
+}
+
+static void update_stune_boost(struct boost_drv *b, int value)
+{
+#ifdef CONFIG_DYNAMIC_STUNE_BOOST
+	if (value && !b->stune_active)
+		b->stune_active = !do_stune_boost("top-app", value,
+						  &b->stune_slot);
+#endif
+}
+
+static void clear_stune_boost(struct boost_drv *b)
+{
+#ifdef CONFIG_DYNAMIC_STUNE_BOOST
+	if (b->stune_active)
+		b->stune_active = reset_stune_boost("top-app", b->stune_slot);
+#endif
 }
 
 static void __cpu_input_boost_kick(struct boost_drv *b)
@@ -284,9 +309,17 @@ static int cpu_notifier_cb(struct notifier_block *nb, unsigned long action,
 		return NOTIFY_OK;
 	}
 
+	/* Unboost when the screen is off */
+	if (state & SCREEN_OFF) {
+		policy->min = get_min_freq(policy);
+		clear_stune_boost(b);
+		return NOTIFY_OK;
+	}
+
 	/* Boost CPU to max frequency for max boost */
 	if (state & MAX_BOOST) {
 		policy->min = get_max_boost_freq(policy);
+		update_stune_boost(b, stune_boost);
 		return NOTIFY_OK;
 	}
 
@@ -294,12 +327,13 @@ static int cpu_notifier_cb(struct notifier_block *nb, unsigned long action,
 	 * Boost to policy->max if the boost frequency is higher. When
 	 * unboosting, set policy->min to the absolute min freq for the CPU.
 	 */
-	if (state & INPUT_BOOST)
+	if (state & INPUT_BOOST) {
 		policy->min = get_input_boost_freq(policy);
-	else if (cpumask_test_cpu(policy->cpu, cpu_lp_mask))
-		policy->min = CONFIG_MIN_FREQ_LP;
-	else
+		update_stune_boost(b, stune_boost);
+	} else {
 		policy->min = get_min_freq(policy);
+		clear_stune_boost(b);
+	}
 
 	return NOTIFY_OK;
 }
