@@ -10,6 +10,9 @@
 #include <linux/msm_drm_notify.h>
 #include <linux/input.h>
 #include <linux/kthread.h>
+#include <linux/moduleparam.h>
+#include <linux/msm_drm_notify.h>
+#include <linux/slab.h>
 #include <linux/version.h>
 #include <linux/slab.h>
 
@@ -18,11 +21,32 @@
 #include <uapi/linux/sched/types.h>
 #endif
 
-enum {
-	SCREEN_OFF,
-	INPUT_BOOST,
-	MAX_BOOST
-};
+static unsigned int input_boost_freq_lp __read_mostly =
+	CONFIG_INPUT_BOOST_FREQ_LP;
+static unsigned int input_boost_freq_hp __read_mostly =
+	CONFIG_INPUT_BOOST_FREQ_PERF;
+static unsigned int max_boost_freq_lp __read_mostly =
+	CONFIG_MAX_BOOST_FREQ_LP;
+static unsigned int max_boost_freq_hp __read_mostly =
+	CONFIG_MAX_BOOST_FREQ_PERF;
+
+static unsigned short input_boost_duration __read_mostly =
+	CONFIG_INPUT_BOOST_DURATION_MS;
+static unsigned short wake_boost_duration __read_mostly =
+	CONFIG_WAKE_BOOST_DURATION_MS;
+
+module_param(input_boost_freq_lp, uint, 0644);
+module_param(input_boost_freq_hp, uint, 0644);
+module_param(max_boost_freq_lp, uint, 0644);
+module_param(max_boost_freq_hp, uint, 0644);
+
+module_param(input_boost_duration, short, 0644);
+module_param(wake_boost_duration, short, 0644);
+
+/* Available bits for boost state */
+#define SCREEN_OFF		BIT(0)
+#define INPUT_BOOST		BIT(1)
+#define MAX_BOOST		BIT(2)
 
 struct boost_drv {
 	struct delayed_work input_unboost;
@@ -41,9 +65,9 @@ static u32 get_input_boost_freq(struct cpufreq_policy *policy)
 	u32 freq;
 
 	if (cpumask_test_cpu(policy->cpu, cpu_lp_mask))
-		freq = CONFIG_INPUT_BOOST_FREQ_LP;
+		freq = input_boost_freq_lp;
 	else
-		freq = CONFIG_INPUT_BOOST_FREQ_PERF;
+		freq = input_boost_freq_hp;
 
 	return min(freq, policy->max);
 }
@@ -53,9 +77,9 @@ static u32 get_max_boost_freq(struct cpufreq_policy *policy)
 	u32 freq;
 
 	if (cpumask_test_cpu(policy->cpu, cpu_lp_mask))
-		freq = CONFIG_MAX_BOOST_FREQ_LP;
+		freq = max_boost_freq_lp;
 	else
-		freq = CONFIG_MAX_BOOST_FREQ_PERF;
+		freq = max_boost_freq_hp;
 
 	return min(freq, policy->max);
 }
@@ -107,10 +131,13 @@ static void __cpu_input_boost_kick(struct boost_drv *b)
 	if (test_bit(SCREEN_OFF, &b->state))
 		return;
 
-	set_bit(INPUT_BOOST, &b->state);
-	if (!mod_delayed_work(system_unbound_wq, &b->input_unboost,
-			      msecs_to_jiffies(CONFIG_INPUT_BOOST_DURATION_MS)))
-		wake_up(&b->boost_waitq);
+	if (!input_boost_duration)
+		return;
+
+	set_boost_bit(b, INPUT_BOOST);
+	wake_up(&b->boost_waitq);
+	mod_delayed_work(system_unbound_wq, &b->input_unboost,
+			 msecs_to_jiffies(input_boost_duration));
 }
 
 void cpu_input_boost_kick(void)
@@ -247,8 +274,8 @@ static int msm_drm_notifier_cb(struct notifier_block *nb, unsigned long action,
 
 	/* Boost when the screen turns on and unboost when it turns off */
 	if (*blank == MSM_DRM_BLANK_UNBLANK) {
-		clear_bit(SCREEN_OFF, &b->state);
-		__cpu_input_boost_kick_max(b, CONFIG_WAKE_BOOST_DURATION_MS);
+		clear_boost_bit(b, SCREEN_OFF);
+		__cpu_input_boost_kick_max(b, wake_boost_duration);
 	} else {
 		set_bit(SCREEN_OFF, &b->state);
 		wake_up(&b->boost_waitq);
