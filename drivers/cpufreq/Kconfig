@@ -486,11 +486,38 @@ config REMOVE_INPUT_BOOST_FREQ_PERF
 	int "Performance cluster return frequency"
 	default "0"
 	help
-	  This is the frequency the performance cluster will fallback to
-	  once the boost is over. The default 0 will make the policy
-	  use cpuinfo.min_freq. In case the device has some kind of quirk
-	  of using a higher than cpuinfo.min_freq (e.g. OnePlus 5/5T/6)
-	  this frequency will be used.
+	  This sets the default minimum frequency (in kHz) for the prime CPU
+	  cluster.
+
+	  If in doubt, say 0 to use the hardware's minimum frequency.
+
+config CPU_FREQ_IDLE_LP
+	int "Default idle frequency for the little cluster"
+	default 0
+	help
+	  This sets the default idle frequency (in kHz) for the little CPU
+	  cluster.
+
+	  If in doubt, say 0 to use the hardware's minimum frequency.
+
+config CPU_FREQ_IDLE_PERF
+	int "Default idle frequency for the big cluster"
+	default 0
+	help
+	  This sets the default idle frequency (in kHz) for the big CPU
+	  cluster.
+
+	  If in doubt, say 0 to use the hardware's minimum frequency.
+
+config CPU_FREQ_IDLE_PERFP
+	int "Default idle frequency for the prime cluster"
+	default 0
+	help
+	  This sets the default idle frequency (in kHz) for the prime CPU
+	  cluster.
+
+	  If in doubt, say 0 to use the hardware's minimum frequency.
+
 endif
 
 comment "CPU frequency scaling drivers"

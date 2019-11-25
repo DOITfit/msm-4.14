@@ -29,22 +29,32 @@ static unsigned int max_boost_freq_lp __read_mostly =
 	CONFIG_MAX_BOOST_FREQ_LP;
 static unsigned int max_boost_freq_hp __read_mostly =
 	CONFIG_MAX_BOOST_FREQ_PERF;
-static unsigned int remove_input_boost_freq_lp __read_mostly =
-	CONFIG_REMOVE_INPUT_BOOST_FREQ_LP;
-static unsigned int remove_input_boost_freq_perf __read_mostly =
-	CONFIG_REMOVE_INPUT_BOOST_FREQ_PERF;
+static unsigned int max_boost_freq_prime __read_mostly =
+	CONFIG_MAX_BOOST_FREQ_PERFP;
+static unsigned int cpu_freq_min_little __read_mostly =
+	CONFIG_CPU_FREQ_MIN_LP;
+static unsigned int cpu_freq_min_big __read_mostly =
+	CONFIG_CPU_FREQ_MIN_PERF;
+static unsigned int cpu_freq_min_prime __read_mostly =
+	CONFIG_CPU_FREQ_MIN_PERFP;
+static unsigned int cpu_freq_idle_little __read_mostly =
+	CONFIG_CPU_FREQ_IDLE_LP;
 
 static unsigned short input_boost_duration __read_mostly =
 	CONFIG_INPUT_BOOST_DURATION_MS;
 static unsigned short wake_boost_duration __read_mostly =
 	CONFIG_WAKE_BOOST_DURATION_MS;
 
-module_param(input_boost_freq_lp, uint, 0644);
-module_param(input_boost_freq_hp, uint, 0644);
-module_param(max_boost_freq_lp, uint, 0644);
-module_param(max_boost_freq_hp, uint, 0644);
-module_param(remove_input_boost_freq_lp, uint, 0644);
-module_param(remove_input_boost_freq_perf, uint, 0644);
+module_param(input_boost_freq_little, uint, 0644);
+module_param(input_boost_freq_big, uint, 0644);
+module_param(input_boost_freq_prime, uint, 0644);
+module_param(max_boost_freq_little, uint, 0644);
+module_param(max_boost_freq_big, uint, 0644);
+module_param(max_boost_freq_prime, uint, 0644);
+module_param(cpu_freq_min_little, uint, 0644);
+module_param(cpu_freq_min_big, uint, 0644);
+module_param(cpu_freq_min_prime, uint, 0644);
+module_param(cpu_freq_idle_little, uint, 0644);
 
 module_param(input_boost_duration, short, 0644);
 module_param(wake_boost_duration, short, 0644);
@@ -130,6 +140,21 @@ static unsigned int get_max_boost_freq(struct cpufreq_policy *policy)
 
 	return min(freq, policy->max);
 }
+
+static unsigned int get_idle_freq(struct cpufreq_policy *policy)
+{
+	unsigned int freq;
+
+	if (cpumask_test_cpu(policy->cpu, cpu_lp_mask))
+		freq = cpu_freq_idle_little;
+	else if (cpumask_test_cpu(policy->cpu, cpu_lp_perf))
+		freq = CONFIG_CPU_FREQ_IDLE_PERF;
+	else
+		freq = CONFIG_CPU_FREQ_IDLE_PERFP;
+
+	return max(freq, policy->cpuinfo.min_freq);
+}
+
 
 static void update_online_cpu_policy(void)
 {
@@ -254,8 +279,8 @@ static int cpu_notifier_cb(struct notifier_block *nb, unsigned long action,
 		return NOTIFY_OK;
 
 	/* Unboost when the screen is off */
-	if (state & SCREEN_OFF) {
-		policy->min = get_min_freq(policy);
+	if (test_bit(SCREEN_OFF, &b->state)) {
+		policy->min = get_idle_freq(policy);
 		return NOTIFY_OK;
 	}
 
