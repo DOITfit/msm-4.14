@@ -22,6 +22,7 @@
 #include <linux/pmic-voter.h>
 #include <linux/of_batterydata.h>
 #include <linux/ktime.h>
+#include <linux/module.h>
 #include "smb5-lib.h"
 #include "smb5-reg.h"
 #include "schgm-flash.h"
@@ -2777,6 +2778,9 @@ static void smblib_reg_work(struct work_struct *work)
 #define ADAPTER_XIAOMI_PD     0x0a
 
 #ifdef CONFIG_THERMAL
+unsigned int skip_therm = 0;
+module_param(skip_therm, uint, S_IWUSR | S_IRUGO);
+
 static int smblib_dc_therm_charging(struct smb_charger *chg,
 					int temp_level)
 {
@@ -2784,6 +2788,11 @@ static int smblib_dc_therm_charging(struct smb_charger *chg,
 	int rc;
 	union power_supply_propval pval = {0, };
 	union power_supply_propval val = {0, };
+
+	if (skip_therm) {
+		vote(chg->dc_icl_votable, THERMAL_DAEMON_VOTER, false, 0);
+		return 0;
+	}
 
 		switch (pval.intval) {
 		case ADAPTER_XIAOMI_QC3:
@@ -2879,6 +2888,12 @@ static int smblib_therm_charging(struct smb_charger *chg)
 
 	if (chg->system_temp_level >= MAX_TEMP_LEVEL)
 		return 0;
+
+	if (skip_therm) {
+		vote(chg->fcc_votable, THERMAL_DAEMON_VOTER, false, 0);
+		vote(chg->usb_icl_votable, THERMAL_DAEMON_VOTER, false, 0);
+		return 0;
+	}
 
 	switch (chg->real_charger_type) {
 	case POWER_SUPPLY_TYPE_USB_HVDCP:
