@@ -4944,10 +4944,11 @@ int dsi_panel_pre_mode_switch_to_cmd(struct dsi_panel *panel)
 	if (rc)
 		pr_err("[%s] failed to send DSI_CMD_SET_VID_TO_CMD_SWITCH cmds, rc=%d\n",
 			panel->name, rc);
-
-        mutex_unlock(&panel->panel_lock);
+	mutex_unlock(&panel->panel_lock);
 	return rc;
 }
+
+int skip_reinit = false;
 
 static int panel_disp_param_send_lock(struct dsi_panel *panel, int param)
 {
@@ -5133,6 +5134,14 @@ static int panel_disp_param_send_lock(struct dsi_panel *panel, int param)
 	case DISPPARAM_HBM_FOD2NORM:
 		pr_info("hbm fod to normal mode\n");
 		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_DISP_HBM_FOD2NORM);
+		break;
+	case 0x40000:
+		pr_info("DC on\n");
+		skip_reinit = true;
+		break;
+	case 0x50000:
+		pr_info("DC off\n");
+		skip_reinit = false;
 		break;
 	case DISPPARAM_HBM_FOD_OFF:
 		pr_info("hbm fod off\n");
