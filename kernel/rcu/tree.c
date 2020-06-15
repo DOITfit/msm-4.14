@@ -652,7 +652,6 @@ static void rcu_eqs_enter(bool user)
 		return;
 	}
 
-	lockdep_assert_irqs_disabled();
 	trace_rcu_dyntick(TPS("Start"), rdtp->dynticks_nesting, 0, rdtp->dynticks);
 	WARN_ON_ONCE(IS_ENABLED(CONFIG_RCU_EQS_DEBUG) && !user && !is_idle_task(current));
 	for_each_rcu_flavor(rsp) {
@@ -679,7 +678,6 @@ static void rcu_eqs_enter(bool user)
  */
 void rcu_idle_enter(void)
 {
-	lockdep_assert_irqs_disabled();
 	rcu_eqs_enter(false);
 }
 
@@ -697,7 +695,7 @@ void rcu_idle_enter(void)
  */
 void rcu_user_enter(void)
 {
-	lockdep_assert_irqs_disabled();
+	
 	rcu_eqs_enter(true);
 }
 #endif /* CONFIG_NO_HZ_FULL */
@@ -780,8 +778,13 @@ void rcu_nmi_exit(void)
  */
 void rcu_irq_exit(void)
 {
-	lockdep_assert_irqs_disabled();
-	rcu_nmi_exit_common(true);
+	struct rcu_dynticks *rdtp = this_cpu_ptr(&rcu_dynticks);
+
+	if (rdtp->dynticks_nmi_nesting == 1)
+		rcu_prepare_for_idle();
+	rcu_nmi_exit();
+	if (rdtp->dynticks_nmi_nesting == 0)
+		rcu_dynticks_task_enter();
 }
 
 /*
@@ -812,7 +815,6 @@ static void rcu_eqs_exit(bool user)
 	struct rcu_dynticks *rdtp;
 	long oldval;
 
-	lockdep_assert_irqs_disabled();
 	rdtp = this_cpu_ptr(&rcu_dynticks);
 	oldval = rdtp->dynticks_nesting;
 	WARN_ON_ONCE(IS_ENABLED(CONFIG_RCU_EQS_DEBUG) && oldval < 0);
@@ -945,8 +947,13 @@ void rcu_nmi_enter(void)
  */
 void rcu_irq_enter(void)
 {
-	lockdep_assert_irqs_disabled();
-	rcu_nmi_enter_common(true);
+	struct rcu_dynticks *rdtp = this_cpu_ptr(&rcu_dynticks);
+
+	if (rdtp->dynticks_nmi_nesting == 0)
+		rcu_dynticks_task_exit();
+	rcu_nmi_enter();
+	if (rdtp->dynticks_nmi_nesting == 1)
+		rcu_cleanup_after_idle();
 }
 
 /*
@@ -1717,8 +1724,7 @@ static void rcu_accelerate_cbs_unlocked(struct rcu_node *rnp,
 	unsigned long c;
 	bool needwake;
 
-	lockdep_assert_irqs_disabled();
-	c = rcu_seq_snap(&rcu_state.gp_seq);
+	c = rcu_seq_snap(&rsp->gp_seq);
 	if (!rdp->gpwrap && ULONG_CMP_GE(rdp->gp_seq_needed, c)) {
 		/* Old request still live, so mark recent callbacks. */
 		(void)rcu_segcblist_accelerate(&rdp->cblist, c);
