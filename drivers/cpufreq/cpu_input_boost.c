@@ -128,12 +128,9 @@ static unsigned int get_min_freq(struct cpufreq_policy *policy)
 	return max(freq, policy->cpuinfo.min_freq);
 }
 
-static u32 get_boost_state(struct boost_drv *b)
-{
-	return atomic_read(&b->state);
-}
+static u32 get_boost_state(struct boost_drv *b);
 
-static unsigned int get_input_boost_freq(struct cpufreq_policy *policy)
+static unsigned int get_input_boost_state(struct cpufreq_policy *policy)
 {
 	unsigned int freq;
 
@@ -145,7 +142,7 @@ static unsigned int get_input_boost_freq(struct cpufreq_policy *policy)
 	return min(freq, policy->max);
 }
 
-static unsigned int get_max_boost_freq(struct cpufreq_policy *policy)
+static unsigned int get_max_boost_state(struct cpufreq_policy *policy)
 {
 	unsigned int freq;
 
@@ -162,8 +159,8 @@ static unsigned int get_idle_freq(struct cpufreq_policy *policy)
 	unsigned int freq;
 
 	if (cpumask_test_cpu(policy->cpu, cpu_lp_mask))
-		freq = cpu_freq_idle_little;
-	else if (cpumask_test_cpu(policy->cpu, cpu_lp_perf))
+		freq = "cpu_freq_idle_little";
+	else if (cpumask_test_cpu(policy->cpu, cpu_lp_mask))
 		freq = CONFIG_CPU_FREQ_IDLE_PERF;
 	else
 		freq = CONFIG_CPU_FREQ_IDLE_PERFP;
@@ -189,8 +186,7 @@ static void update_stune_boost(struct boost_drv *b, int value)
 {
 #ifdef CONFIG_DYNAMIC_STUNE_BOOST
 	if (value && !b->stune_active)
-		b->stune_active = !do_stune_boost("top-app", value,
-						  &b->stune_slot);
+		b->stune_active = !do_stune_boost("top-app", &b->stune_slot);
 #endif
 }
 
@@ -198,7 +194,7 @@ static void clear_stune_boost(struct boost_drv *b)
 {
 #ifdef CONFIG_DYNAMIC_STUNE_BOOST
 	if (b->stune_active)
-		b->stune_active = reset_stune_boost("top-app", b->stune_slot);
+		b->stune_active = !do_stune_boost("top-app", &b->stune_slot);
 #endif
 }
 
@@ -478,11 +474,10 @@ static int __init cpu_input_boost_init(void)
 		goto unregister_handler;
 	}
 
-	thread = kthread_run_perf_critical(cpu_thread, b, "cpu_boostd");
+	thread = kthread_run(cpu_thread, b, "cpu_boostd");
 	if (IS_ERR(thread)) {
 		ret = PTR_ERR(thread);
 		pr_err("Failed to start CPU boost thread, err: %d\n", ret);
-		goto unregister_drm_notif;
 	}
 
 	return 0;
