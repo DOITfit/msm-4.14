@@ -1724,7 +1724,6 @@ static void rcu_accelerate_cbs_unlocked(struct rcu_node *rnp,
 	unsigned long c;
 	bool needwake;
 
-	c = rcu_seq_snap(&rsp->gp_seq);
 	if (!rdp->gpwrap && ULONG_CMP_GE(rdp->gp_seq_needed, c)) {
 		/* Old request still live, so mark recent callbacks. */
 		(void)rcu_segcblist_accelerate(&rdp->cblist, c);
