@@ -135,6 +135,7 @@ static unsigned long one_ul = 1;
 static unsigned long long_max = LONG_MAX;
 static int one_hundred = 100;
 static int one_thousand = 1000;
+static int max_swappiness = 200;
 #ifdef CONFIG_SCHED_WALT
 static int two_million = 2000000;
 #endif
@@ -1336,7 +1337,7 @@ static struct ctl_table kern_table[] = {
 		.mode		= 0644,
 		.proc_handler	= perf_cpu_time_max_percent_handler,
 		.extra1		= &zero,
-		.extra2		= &one_hundred,
+		.extra2		= &max_swappiness,
 	},
 	{
 		.procname	= "perf_event_max_stack",
